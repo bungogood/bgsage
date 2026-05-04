@@ -6,9 +6,10 @@ Neural-network backgammon engine with C++ core and Python interface. Licensed un
 
 **This is a standalone library repo (`bgsage/`). When the working directory is
 pointed at this folder, ALL new files, edits, and commits MUST stay within this
-repo.** Never create or modify files in the parent directory (e.g. `sageapi/`),
-even if parent CLAUDE.md files are loaded as context. New Python modules go in
-`python/bgsage/`, new scripts in `scripts/`, new C++ in `cpp/`.
+repo.** Never create or modify files outside this repo, even if parent CLAUDE.md
+files (from a host project that vendors this repo as a submodule) are loaded as
+context. New Python modules go in `python/bgsage/`, new scripts in `scripts/`,
+new C++ in `cpp/`.
 
 ## Git Worktree Rules
 
@@ -19,9 +20,9 @@ path" and is the primary working directory for the session.
 
 - The worktree has its own branch. Commit and push from the worktree, then merge
   to main via PR or local merge — do NOT commit directly to main.
-- Use relative paths or the worktree absolute path for all tool calls. If you see
-  yourself using the main repo path (e.g. `C:/.../bgsage/` instead of
-  `C:/.../bgsage/.claude/worktrees/<name>/`), STOP and fix it.
+- Use relative paths or the worktree path for all tool calls. If you see
+  yourself using the main repo path (e.g. `<repo-root>/` instead of
+  `<repo-root>/.claude/worktrees/<name>/`), STOP and fix it.
 - New files created in the main repo path will NOT be on the worktree branch.
 - The MSVC build directory (`build_msvc/`) is shared across worktrees. After
   building, copy the `.pyd` to the worktree's `build/` directory.
@@ -635,7 +636,7 @@ Three steps; the middle one is manual because it goes through XG's GUI.
 
 ```bash
 # 200 games at 3-ply, 6 parallel worker processes
-python bgsage/scripts/run_sage_vs_sage_games.py 1 200 --level 3P --workers 6
+python scripts/run_sage_vs_sage_games.py 1 200 --level 3P --workers 6
 ```
 
 ```python
@@ -669,7 +670,7 @@ to read. When Batch Analyze finishes, the folder contains a matching
 [scripts/aggregate_xg_pr.py](scripts/aggregate_xg_pr.py):
 
 ```bash
-python bgsage/scripts/aggregate_xg_pr.py [folder] [--pattern '*.xg']
+python scripts/aggregate_xg_pr.py [folder] [--pattern '*.xg']
 ```
 
 For each .xg, the script parses turns via
@@ -713,7 +714,7 @@ to incompatible C runtime. Always use MSVC.
 # One-time CMake configure
 cd build_msvc
 cmake ..\cpp -G Ninja -DCMAKE_BUILD_TYPE=Release `
-  -Dpybind11_DIR=C:/path/to/pybind11/share/cmake/pybind11
+  -Dpybind11_DIR=<path-to-pybind11>/share/cmake/pybind11
 
 # Build
 ninja bgbot_cpp
@@ -789,10 +790,11 @@ MODELS["stage5small"] = {
 ```
 
 **Step 3: Launch training as a detached process** (Windows).
-Training is long-running and must survive past Claude Code's ~1h timeout:
+Training is long-running and must survive past Claude Code's ~1h timeout.
+Run from the bgsage repo root:
 ```bash
-# IMPORTANT: Use python -u for unbuffered output, full path to python
-powershell -Command "Start-Process -FilePath 'C:\Users\mghig\AppData\Local\Programs\Python\Python314\python.exe' -ArgumentList '-u','bgsage\scripts\run_stage5small_training.py' -WorkingDirectory 'C:\Users\mghig\Dropbox\agents\bgbot' -WindowStyle Hidden -RedirectStandardOutput 'C:\Users\mghig\Dropbox\agents\bgbot\logs\training.log' -RedirectStandardError 'C:\Users\mghig\Dropbox\agents\bgbot\logs\training_err.log'"
+# IMPORTANT: Use python -u for unbuffered output. python must be on PATH.
+powershell -Command "Start-Process -FilePath python -ArgumentList '-u','scripts\run_stage5small_training.py' -WindowStyle Hidden -RedirectStandardOutput 'logs\training.log' -RedirectStandardError 'logs\training_err.log'"
 ```
 
 **Output buffering note:** Even with `-u`, C++ stdout from `bgbot_cpp` functions
@@ -813,10 +815,10 @@ to ~20 prints per phase, e.g., every 10 epochs for a 200-epoch phase).
 powershell -Command "Get-Process python* | Select-Object Id, CPU, StartTime"
 
 # Check weight file timestamps (updated every benchmark_interval)
-stat -c '%Y' bgsage/models/td_s5s_racing.weights && date +%s
+stat -c '%Y' models/td_s5s_racing.weights && date +%s
 
 # Check history CSV
-cat bgsage/models/td_s5s.history.csv
+cat models/td_s5s.history.csv
 
 # Check log output (may be delayed due to C++ internal buffering)
 powershell -Command "Get-Content 'logs\training.log' -Tail 20"
@@ -824,7 +826,7 @@ powershell -Command "Get-Content 'logs\training.log' -Tail 20"
 
 **Step 5: After training completes**, run benchmarks:
 ```bash
-python bgsage/scripts/run_stage5small_benchmarks.py
+python scripts/run_stage5small_benchmarks.py
 ```
 
 **Estimated timing** (Stage 5 Small — 100h/200h hidden, Windows RTX 4070S):
@@ -1579,10 +1581,10 @@ Copy `scripts/run_s8_training.py` and update these constants:
 ### Step 3: Launch Training
 
 Training is long-running (~30-50 hours depending on hidden size). Launch as a
-detached Windows process:
+detached Windows process. Run from the bgsage repo root (python must be on PATH):
 
 ```bash
-powershell -Command "Start-Process -FilePath 'C:\Users\mghig\AppData\Local\Programs\Python\Python314\python.exe' -ArgumentList '-u','bgsage\scripts\run_s9_training.py' -WorkingDirectory 'C:\Users\mghig\Dropbox\agents\bgbot' -WindowStyle Hidden -RedirectStandardOutput 'C:\Users\mghig\Dropbox\agents\bgbot\logs\s9_training.log' -RedirectStandardError 'C:\Users\mghig\Dropbox\agents\bgbot\logs\s9_training_err.log'"
+powershell -Command "Start-Process -FilePath python -ArgumentList '-u','scripts\run_s9_training.py' -WindowStyle Hidden -RedirectStandardOutput 'logs\s9_training.log' -RedirectStandardError 'logs\s9_training_err.log'"
 ```
 
 ### Step 4: Monitor Progress
@@ -1591,9 +1593,9 @@ Set up a cron job to show the user a training summary every 10 minutes. Use
 `CronCreate` with `*/10 * * * *` and a prompt that runs these checks:
 
 1. **Process alive?** `powershell -Command "Get-Process python* | Select-Object Id, CPU, WorkingSet64, StartTime | Format-Table -AutoSize"`
-2. **Training log tail:** `powershell -Command "Get-Content 'C:\Users\mghig\Dropbox\agents\bgbot\logs\s9_training.log' -Tail 30"`
-3. **Errors:** `powershell -Command "Get-Content 'C:\Users\mghig\Dropbox\agents\bgbot\logs\s9_training_err.log' -Tail 10"`
-4. **Weight files:** `ls -lt bgsage/models/td_s9* bgsage/models/sl_s9* bgsage/models/s9_gpw_scan/ 2>/dev/null | head -20`
+2. **Training log tail:** `powershell -Command "Get-Content 'logs\s9_training.log' -Tail 30"`
+3. **Errors:** `powershell -Command "Get-Content 'logs\s9_training_err.log' -Tail 10"`
+4. **Weight files:** `ls -lt models/td_s9* models/sl_s9* models/s9_gpw_scan/ 2>/dev/null | head -20`
 
 The cron prompt should instruct Claude to summarize: what phase it's in (TD Phase 1,
 TD Phase 2, GPW scan, SL phases 3-4, benchmarks), how far along, and any issues.
@@ -1609,9 +1611,9 @@ powershell -Command "Get-Content 'logs\s9_training.log' -Tail 30"
 
 Check weight file timestamps to verify training is progressing:
 ```bash
-ls -la bgsage/models/td_s9_*.weights
-ls -la bgsage/models/s9_gpw_scan/
-ls -la bgsage/models/sl_s9_*.weights.best
+ls -la models/td_s9_*.weights
+ls -la models/s9_gpw_scan/
+ls -la models/sl_s9_*.weights.best
 ```
 
 ### Step 5: Training Pipeline Phases
