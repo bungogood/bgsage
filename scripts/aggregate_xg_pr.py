@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Aggregate per-game PR stats across all .xg files in a folder.
 
 For each .xg file, parses turns via ``bgsage.xg_compare.parse_xg_game``,

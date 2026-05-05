@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Test script: evaluate a position at 1-ply, 2-ply, 3-ply, 4-ply, and rollout.
 
 Displays a table of the 5 probabilities, equity, and computation time for each.

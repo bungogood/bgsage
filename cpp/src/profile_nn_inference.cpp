@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Profile raw neural network inference: encoding + forward pass.
 //
 // Designed for profiling with VTune, perf, or wall-clock microbenchmarks.

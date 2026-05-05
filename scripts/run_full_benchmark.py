@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Full benchmark suite for the 5-NN game plan strategy.
 
 Runs game plan benchmarks, old-style benchmarks, vs PubEval, and self-play

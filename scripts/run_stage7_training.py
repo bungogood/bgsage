@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Stage 7 Training: 17-NN ordered game plan pair model.
 

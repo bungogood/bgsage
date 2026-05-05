@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Benchmark: 4-ply cube action analytics with full output.
 //
 // Runs 4-ply cube decision 3 times and reports average time,

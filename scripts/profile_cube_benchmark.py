@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Cube analysis profiling benchmark.
 
 Evaluates 8 fixed positions at a given evaluation level and prints results

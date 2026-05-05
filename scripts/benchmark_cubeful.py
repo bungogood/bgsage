@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark cubeful cube decision at 2-ply through 4-ply.
 
 Uses a specific contact position to measure timing and equity values.

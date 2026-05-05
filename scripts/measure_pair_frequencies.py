@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Measure (player, opponent) game plan pair frequencies in training data.
 
 Prints a 4x4 table of ordered pair frequencies for contact positions,

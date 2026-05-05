@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark 4-ply checker play: compare old (single-pass) vs new (iterative deepening).
 
 Shows which moves survive each filter step and the final best move.

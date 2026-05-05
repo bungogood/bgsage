@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """4-ply cube action benchmark for 11 reference positions.
 
 Evaluates each position at 4-ply with 16 threads, prints outputs and wall-clock time.

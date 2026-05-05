@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Diagnose whether VR introduces bias in full rollouts.
 
 Runs the same position with VR on and VR off using the same seed,

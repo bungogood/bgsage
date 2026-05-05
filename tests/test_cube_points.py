@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Tests for cube action points (Take / Double / Cash / Too Good).
 
 Covers the user-supplied match-play reference values:

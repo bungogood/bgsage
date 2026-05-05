@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """3T (XG Roller++) cube action benchmark using reference positions.
 
 Reads 11 positions from ../refpos.txt, evaluates each at the 3T truncated

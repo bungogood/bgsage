@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Reference-position benchmark for MultiPly serial/parallel parity and speed.
 
 Usage:

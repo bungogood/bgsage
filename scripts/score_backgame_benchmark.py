@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Score S9 back game benchmark ER against S9 rollout targets.
 
 Evaluates each position with the full 19-NN BackgameAwarePairStrategy at 1-ply,

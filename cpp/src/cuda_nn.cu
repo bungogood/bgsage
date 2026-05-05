@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 #include "bgbot/cuda_nn.h"
 #include "bgbot/neural_net.h"
 #include "bgbot/benchmark.h"

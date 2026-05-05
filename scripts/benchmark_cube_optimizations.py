@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Cube analytics optimization benchmark.
 
 Evaluates the 11 reference positions in refpos.txt at 3-ply, 4-ply, 2T, 3T

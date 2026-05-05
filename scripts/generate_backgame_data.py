@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Generate back game position data for training and benchmarking.
 
 Plays cubeless self-play games using Stage 8 pair model at 1-ply with 32

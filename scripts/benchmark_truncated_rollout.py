@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark: XG Roller++ Cube truncated rollout.
 
 Runs a single cube_decision_rollout call (XG Roller++ Cube settings)

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Comprehensive unit tests for the extended 214-input contact encoding.
 

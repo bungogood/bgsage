@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Weight configuration for the 5-NN game plan strategy.
 
 The PRODUCTION_MODEL constant defines which model all scripts and the analyzer

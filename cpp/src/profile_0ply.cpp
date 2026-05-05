@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Profile 1-ply evaluation: encode + forward pass for a contact position.
 // Usage: bgbot_profile_1ply [iterations]
 //   Default iterations auto-calibrated to ~1 second.

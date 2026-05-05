@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Run baseline benchmarks: score the existing 3-NN strategy against the new game plan benchmark files.
 This gives us baseline scores for comparison with the new 4-NN strategy.

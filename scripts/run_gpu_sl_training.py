@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Run GPU-accelerated supervised learning training for backgammon neural networks.
 

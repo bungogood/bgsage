@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Benchmark: 3T cube action analytics (XG Roller++ Cube equivalent).
 //
 // 360 trials, truncation_depth=7, decision_ply=3, late_ply=2, late_threshold=2

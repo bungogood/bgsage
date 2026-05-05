@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Cube action points (Take / Double / Cash / Too Good).
 
 For money games this uses the standard closed-form Janowski formulas in

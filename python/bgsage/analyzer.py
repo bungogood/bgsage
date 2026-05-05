@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """High-level analysis interface for the Open Sage bot engine.
 
 This module provides :class:`BgBotAnalyzer`, the main entry point for

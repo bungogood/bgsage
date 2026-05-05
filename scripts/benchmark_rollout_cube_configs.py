@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark rollout cube action with different checker/cube evaluation configs.
 
 Compares wall-clock time, cubeful equities, cubeless probabilities, and standard

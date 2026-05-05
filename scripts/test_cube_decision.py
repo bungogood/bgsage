@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Test doubling cube decisions against reference positions.
 
 Tests the Janowski cubeful equity model at 1-ply against three reference

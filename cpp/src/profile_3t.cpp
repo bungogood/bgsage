@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Profile 3T rollout: measure time breakdown per trial and per move.
 //
 // Runs a single-threaded 3T rollout (36 trials) with timing instrumentation

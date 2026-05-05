@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """bgsage — the Open Sage bot engine, a neural-network backgammon engine.
 
 Provides position analysis (checker play and cube decisions) at multiple

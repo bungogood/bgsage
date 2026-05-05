@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Compare cube analysis time: bgbot Stage 5 vs GNUbg at 4-ply.
 
 Evaluates cubeless probabilities from the starting position (pre-roll) at 4-ply

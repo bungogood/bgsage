@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Evaluate a position with Stage 5 and GNUbg side-by-side.
 
 Supports both cube action and checker play analysis, for money games or match play.

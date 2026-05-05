@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark truncated cubeful rollout for a fixed cube-action position.
 
 This targets the XG Roller++ Cube-equivalent configuration from CLAUDE.md:

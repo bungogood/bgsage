@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Unit tests for the 244-input extended contact encoding with GNUbg features.
 

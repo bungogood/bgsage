@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Parse eXtreme Gammon (.xg) batch-analyzed game files and compute PR stats.
 
 Used to benchmark Sage's evaluations against XG's: feed Sage-vs-Sage transcripts

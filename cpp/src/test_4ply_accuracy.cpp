@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 Mark Higgins
 // Test 4-ply cube accuracy across multiple positions.
 // Compares values with and without the prefilter optimization.
 // Must be run with the optimized code compiled in.

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Full contact.bm benchmark at a given evaluation level, parallelized by scenario.
 
 Each worker thread gets a batch of scenarios and evaluates them single-threaded.

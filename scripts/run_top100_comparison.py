@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Run top-100 benchmark for Stage 5, Stage 5 Small, and Hybrid models.
 All three use the same top-100 positions (identified by Stage 5 1-ply errors).

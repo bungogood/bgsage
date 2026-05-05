@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Generate Cubeful Benchmark PR data: simulate money games with cube decisions,
 collect both checker-play and cube decision positions, prepare for rollout.

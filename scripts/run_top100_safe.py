@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Top-100 worst 1-ply positions scored at all strategy levels.
 Runs each rollout level in a separate subprocess to avoid segfaults

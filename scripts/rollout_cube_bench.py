@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Benchmark cubeful rollout cube decisions at various settings.
 
 Tests the reference position with different evaluation strengths,

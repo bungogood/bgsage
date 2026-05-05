@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """
 Diagnose TD training divergence with 100h/200h (Stage 5 Small).
 

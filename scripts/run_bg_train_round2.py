@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Mark Higgins
 """Round 2 SL training for back game NNs (Stage 9).
 
 Starts from current .weights.best, saves best to .weights.best.
