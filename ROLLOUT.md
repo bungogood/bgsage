@@ -16,8 +16,8 @@ and the 5-probability NN output format.
 3. [Stratified Dice Generation](#3-stratified-dice-generation)
 4. [Variance Reduction (VR)](#4-variance-reduction-vr)
 5. [The Unified Trial Function](#5-the-unified-trial-function)
-6. [Cubeless Rollout (Position Evaluation)](#6-cubeless-rollout-position-evaluation)
-7. [Cubeful Rollout (Cube Decision Evaluation)](#7-cubeful-rollout-cube-decision-evaluation)
+6. [Position Rollouts (Cubeless and Cubeful)](#6-position-rollouts-cubeless-and-cubeful)
+7. [Cube Decision Rollout](#7-cube-decision-rollout)
 8. [Move Selection Strategies During Trials](#8-move-selection-strategies-during-trials)
 9. [Cube Decision Strategies During Trials](#9-cube-decision-strategies-during-trials)
 10. [Move Caches (Move0 and Move1)](#10-move-caches-move0-and-move1)
@@ -42,16 +42,24 @@ to produce:
 - **Cubeless probabilities**: The 5 standard NN outputs (P(win), P(gw), P(bw),
   P(gl), P(bl)) estimated via Monte Carlo simulation.
 - **Cubeless equity**: Derived from the mean probabilities.
-- **Cubeful equities**: For cube decisions, two branches (No-Double and
-  Double/Take) are simulated simultaneously, producing ND and DT equities with
-  standard errors.
+- **Cubeful equity (single cube state)**: For checker play with a known cube
+  state, a single-branch cubeful rollout produces a VR-adjusted cubeful
+  equity from the same trials that produce the cubeless probs.
+- **Cubeful ND / DT equities**: For cube decisions, two branches (No-Double and
+  Double/Take) are simulated simultaneously from a pre-roll board, producing
+  ND and DT cubeful equities with standard errors.
 
-Rollouts are used for two purposes:
+Rollouts are used for three purposes:
 
-1. **Position evaluation**: Given a post-move board, estimate its cubeless
-   probabilities and equity (used by the `Strategy` interface for checker play).
-2. **Cube decision evaluation**: Given a pre-roll board and cube state, estimate
-   ND and DT cubeful equities for optimal cube action determination.
+1. **Cubeless position evaluation**: Given a post-move board, estimate its
+   cubeless probabilities and equity (used by the `Strategy` interface).
+2. **Cubeful position evaluation**: Given a post-move board and a cube state,
+   estimate the cubeful equity (with SE) along with the cubeless probabilities.
+   Used by checker-play analytics so each candidate's cubeful equity is
+   computed natively from rollout trial paths instead of post-hoc Janowski
+   conversion of the rollout's cubeless probs.
+3. **Cube decision evaluation**: Given a pre-roll board and cube state,
+   estimate ND and DT cubeful equities for optimal cube action determination.
 
 ## 2. Overview: Full vs Truncated Rollout
 
@@ -265,11 +273,12 @@ The per-trial VR-corrected probs and equity are returned as the trial result.
 
 ### Cubeful VR
 
-When running cubeful rollouts (section 7), each branch (ND and DT) tracks its own
-VR luck in cubeful value space:
+When the trial carries any active cube branches (single-branch cubeful position
+evaluation, §7, or two-branch cube decision evaluation, §8), each branch tracks
+its own VR luck in cubeful basis-cube SP-perspective value space:
 
 ```
-// For each branch b:
+// For each active branch b:
 if is_match:
     actual_val = cl2cf_match(actual_probs, branch.cube, cube_x)
 else:
@@ -285,7 +294,9 @@ else:           branch.vr_luck -= luck_cf
 
 The cubeful VR always uses 1-ply probs (from the cubeless VR computation) with
 Janowski interpolation for the cubeful conversion, regardless of the cube decision
-strategy used during the trial.
+strategy used during the trial. `basis_cube` is set to the input cube value at
+trial setup so all per-trial cubeful equities are normalized to per-basis-cube
+units (i.e. the value reported has the same scale as a cube=1 equity).
 
 ### VR Speed Optimizations
 
@@ -302,9 +313,10 @@ evaluations for VR.
 
 ## 5. The Unified Trial Function
 
-A single function, `run_trial_unified`, handles both cubeless and cubeful rollout
-modes. This eliminates code duplication and ensures that cubeful overhead is zero
-when all branches have dead cubes.
+A single function, `run_trial_unified`, handles all three rollout modes
+(cubeless position, cubeful position, cubeful cube decision). This eliminates
+code duplication and ensures that cubeful overhead is zero when all branches
+have dead cubes.
 
 ### Signature
 
@@ -313,7 +325,7 @@ TrialResult run_trial_unified(
     board,              // Starting position
     start_post_move,    // true = post-move (opponent first), false = pre-roll (SP first)
     branches[],         // Array of CubefulBranch (or null for cubeless)
-    n_branches,         // 0 for cubeless, 2 for cubeful
+    n_branches,         // 0 = cubeless, 1 = cubeful position, 2 = cubeful cube decision
     dice_seq,           // Pre-generated dice pairs for this trial
     max_moves,          // Maximum half-moves before forced stop
     move0_cache,        // Optional shared cache for first-move decisions
@@ -327,12 +339,23 @@ TrialResult run_trial_unified(
   about to roll). The board is flipped at the start so the opponent moves first.
 - SP parity: `is_sp = (move_num % 2 == 1)` — the first mover (move 0) is the
   opponent, so move 1 is SP's turn.
-- Used by cubeless rollout (position evaluation via `rollout_position`).
+- Used by both cubeless position rollout (`rollout_position`) and cubeful
+  position rollout (`cubeful_rollout_position`).
+- **Cube perspective flip at entry**: when `n_branches > 0`, each branch's
+  cube state is flipped at trial start (owner-flip + match away-swap) to match
+  the post-flip board's perspective. Inputs are conventionally in the
+  post-move mover's (SP's) perspective; after the start-flip, the current
+  mover is the opponent, so `branches[].cube` must be flipped to stay
+  consistent with the loop's invariant that `branches[].cube` is always in
+  the current mover's perspective. Phase 6's per-move flip then keeps it in
+  sync for subsequent half-moves.
 
 **Pre-roll start** (`start_post_move = false`):
 - The input board is a pre-roll position (SP is about to roll). No flip at start.
 - SP parity: `is_sp = (move_num % 2 == 0)` — move 0 is SP's turn.
-- Used by cubeful rollout (cube decision via `cubeful_cube_decision`).
+- No entry cube flip is applied (the input cube perspective already matches
+  the unflipped board).
+- Used by cubeful cube decision rollout (`cubeful_cube_decision`).
 
 ### Per-Move Phases
 
@@ -443,39 +466,85 @@ If the trial reaches `truncation_depth` without terminating:
    probs.
 4. Convert to SP perspective, VR-correct, and return.
 
-## 6. Cubeless Rollout (Position Evaluation)
+## 6. Position Rollouts (Cubeless and Cubeful)
 
-The cubeless rollout evaluates a post-move position by running many trials with
-no cube interaction.
+Position rollouts evaluate a post-move position by running many trials forward
+from that position. The same trial machinery is used in two flavors:
 
-### Entry Point: `rollout_position(board)`
+- **Cubeless** (`rollout_position`): no cube state is tracked; only cubeless
+  probs/equity are produced.
+- **Cubeful** (`cubeful_rollout_position`): a single cube branch is tracked
+  through the trials, producing a VR-adjusted cubeful equity from the trial
+  paths along with the cubeless probs/equity from the same trials.
+
+Both share dice generation, move0/move1 caches, parallelization, and aggregation.
+
+### Cubeless: `rollout_position(board) -> RolloutResult`
 
 1. Pre-generate stratified dice sequences (cached at construction time).
 2. Prefill move0 and move1 caches for the flipped starting board.
-3. Run trials in parallel (or serial if single-threaded).
+3. Run trials in parallel (or serial if single-threaded), each calling
+   `run_trial_unified` with `start_post_move = true`, `branches = nullptr`,
+   `n_branches = 0`.
 4. Aggregate per-trial VR-corrected results into mean probs and standard errors.
 
-### Trial Invocation
-
-Each trial calls `run_trial_unified` with:
-- `start_post_move = true` (board is post-move, opponent moves first)
-- `branches = nullptr, n_branches = 0` (no cube tracking)
-
-The trial returns VR-corrected cubeless probs and equity from SP's perspective.
-
-### Public Strategy Interface
-
-`RolloutStrategy` implements the `Strategy` interface:
-- `evaluate_probs(board, ...)` → `rollout_position(board).mean_probs`
-- `evaluate(board, ...)` → `rollout_position(board).equity`
+`RolloutStrategy` implements the `Strategy` interface using this entry point:
+- `evaluate_probs(board, …)` → `rollout_position(board).mean_probs`
+- `evaluate(board, …)` → `rollout_position(board).equity`
 
 This allows rollout to be used as a drop-in replacement for N-ply evaluation
 anywhere a `Strategy` is expected.
 
-## 7. Cubeful Rollout (Cube Decision Evaluation)
+### Cubeful: `cubeful_rollout_position(post_move_board, cube) -> CubefulPositionResult`
 
-The cubeful rollout evaluates a cube decision by simulating two branches — ND
-(No Double) and DT (Double/Take) — simultaneously with the same dice sequences.
+1. Pre-generate stratified dice sequences.
+2. Create one branch template from the input cube:
+   ```
+   tmpl.cube = cube
+   tmpl.basis_cube = cube.cube_value
+   ```
+   The cube is in the post-move mover's (SP's) perspective. The cube
+   perspective flip described in §5 is applied inside `run_trial_unified` at
+   trial start so that the branch's cube perspective matches the post-flip
+   board (opponent's perspective at move 0).
+3. Prefill move0 and move1 caches for the flipped starting board (same caches
+   as the cubeless path; cubeless prefill is sufficient because move selection
+   is independent of cube state in the trial loop).
+4. Run trials in parallel, each calling `run_trial_unified` with
+   `start_post_move = true`, `branches = [tmpl_copy]`, `n_branches = 1`.
+5. Aggregate per-trial cubeful equities (basis-cube SP-perspective units) into
+   a mean + SE, and aggregate the per-trial cubeless probs/equities the same
+   way as the cubeless path.
+
+The Python binding `RolloutStrategy.cubeful_evaluate_board(board, pre_move_board,
+cube_value, owner, …)` exposes this entry point and returns a dict containing
+both the cubeless results (`probs`, `equity`, `std_error`, `prob_std_errors`)
+and the cubeful results (`cubeful_equity`, `cubeful_se`).
+
+### Result Structure
+
+```
+struct RolloutResult {                      // Cubeless rollout result
+    double equity;                           // Cubeless equity (SP perspective)
+    double std_error;                        // SE of equity
+    array<float, 5> mean_probs;              // VR-corrected per-prob means
+    array<float, 5> prob_std_errors;         // SE per probability component
+    double scalar_vr_equity;                 // Scalar-equity VR diagnostic
+    double scalar_vr_se;
+};
+
+struct CubefulPositionResult {               // Cubeful position rollout result
+    double cubeful_equity;                   // Mean cubeful equity (basis cube units)
+    double cubeful_se;                       // SE of cubeful_equity
+    RolloutResult cubeless;                  // Cubeless results from same trials
+};
+```
+
+## 7. Cube Decision Rollout
+
+The cube decision rollout evaluates a doubling decision by simulating two
+branches — ND (No Double) and DT (Double/Take) — simultaneously with the same
+dice sequences.
 
 ### Entry Point: `cubeful_cube_decision(pre_roll_board, cube)`
 
@@ -485,31 +554,27 @@ The cubeful rollout evaluates a cube decision by simulating two branches — ND
    - **DT branch:** Cube value doubled, opponent owns.
    - Both branches share `basis_cube = cube.cube_value` for normalization.
 3. Prefill move0 and move1 caches for the pre-roll board.
-4. Run trials in parallel, each with a fresh copy of the two branch templates.
+4. Run trials in parallel, each calling `run_trial_unified` with
+   `start_post_move = false`, `branches = [nd_copy, dt_copy]`, `n_branches = 2`.
 5. Aggregate per-trial ND and DT equities into means and standard errors.
 
 ### Branch State: `CubefulBranch`
 
-Each branch carries:
+Used by both single-branch (§6 cubeful position) and two-branch (§7 cube
+decision) modes:
 ```
 struct CubefulBranch {
-    CubeInfo cube;         // Current cube state (mover's perspective)
-    int basis_cube;        // For normalization (same for all branches)
+    CubeInfo cube;         // Current cube state (current mover's perspective)
+    int basis_cube;        // For normalization
     double vr_luck;        // Accumulated VR luck (basis cube units, SP perspective)
     bool finished;         // Branch terminated (D/P, terminal, or truncation)
     double final_equity;   // Result (basis cube units, SP perspective)
 };
 ```
 
-### Trial Invocation
-
-Each trial calls `run_trial_unified` with:
-- `start_post_move = false` (board is pre-roll, SP moves first)
-- `branches = [nd_copy, dt_copy], n_branches = 2`
-
-Both branches share the same dice sequence and board evolution. They diverge only
-in cube state: the DT branch starts with a doubled cube, which affects subsequent
-cube decisions, terminal payoffs, and Janowski evaluations within the trial.
+`branches[].cube` is always in the current mover's perspective at any point
+during the trial. The cube perspective flip at trial entry (§5) plus Phase 6's
+per-move flip maintain this invariant.
 
 ### Cube Decision During Trials
 
@@ -973,15 +1038,40 @@ on `CubeInfo` returns false when match state is present.
 
 ## 16. Best Move Selection via Rollout
 
-The `best_move_index(candidates, pre_move_board)` method selects the best move
-among candidates using rollout evaluation:
+`RolloutStrategy` exposes two entry points for ranking candidate moves with
+rollout evaluation. Both use the same 1-ply pre-filter to narrow candidates
+before launching rollouts.
+
+### Cubeless ranking — `best_move_index(candidates, pre_move_board)`
+
+Used by callers that don't carry cube state (e.g. anywhere a `Strategy`'s
+`best_move_index` is invoked):
 
 1. **1-ply filter:** Score all candidates at 1-ply. Sort by equity descending.
 2. **Threshold filter:** Keep top `max_moves` within `threshold` of the best
    (using the rollout config's filter preset, typically TINY: 5 moves, 0.08).
-3. **Rollout each survivor:** Call `rollout_position(candidate)` for each
-   surviving candidate.
-4. **Pick the best:** Return the candidate with the highest rollout equity.
+3. **Cubeless rollout each survivor:** Call `rollout_position(candidate)` for
+   each surviving candidate.
+4. **Pick the best:** Return the candidate with the highest cubeless rollout
+   equity.
+
+### Cubeful ranking — checker-play analytics
+
+The checker-play analytics path (the `BgBotAnalyzer.checker_play` interface)
+applies a richer pipeline that uses the cubeful rollout for each survivor:
+
+1. **1-ply scoring** (with bearoff DB awareness on bearoff candidates):
+   compute cubeless probs and 1-ply Janowski cubeful equity for every
+   candidate.
+2. **1-ply filter:** keep top `filter.max_moves` within `filter.threshold`
+   cubeful equity of the best.
+3. **3-ply rescore:** evaluate 1-ply survivors at 3-ply; re-filter with the
+   same TINY preset.
+4. **Cubeful rollout each survivor:** call `cubeful_rollout_position(board,
+   cube)` for each candidate, producing both cubeless probs/equity and
+   cubeful equity from the same trial paths (no post-hoc Janowski).
+5. **Sort by cubeful equity:** rank survivors by the rollout-native cubeful
+   equity.
 
 Thread-local caches are cleared before evaluation to prevent cross-strategy
 contamination.
@@ -1040,7 +1130,12 @@ contamination.
 
 | Level | n_trials | trunc_depth | decision_ply | late_ply | late_threshold | ultra_late |
 |-------|----------|-------------|-------------|----------|----------------|------------|
-| 1T (XG Roller) | 42 | 5 | 1 | 1 | 20 | 2 |
+| 1T (XG Roller) | 42 | 5 | 1 | -1 | 20 | 2 |
 | 2T (XG Roller+) | 360 | 7 | 2 | 1 | 2 | 2 |
 | 3T (XG Roller++) | 360 | 5 | 3 | 2 | 2 | 2 |
-| R (Full Rollout) | 1,296 | 0 | 1 | 1 | 20 | 2 |
+| R (Full Rollout) | 1,296 | 0 | 1 | -1 | 20 | 9999 |
+
+For full rollouts (`truncation_depth = 0`), `ultra_late_threshold` is set high
+(9999) to keep configured checker/cube strategies active for the entire game.
+The C++ `RolloutConfig.ultra_late_threshold` default of 2 is appropriate for
+truncated rollouts; full-rollout callers must override it.
