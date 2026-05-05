@@ -758,7 +758,20 @@ PYBIND11_MODULE(bgbot_cpp, m) {
        py::arg("seed") = 42);
 
     // --- Strategy base class (for polymorphic dispatch in unified bindings) ---
-    py::class_<Strategy, std::shared_ptr<Strategy>>(m, "Strategy");
+    py::class_<Strategy, std::shared_ptr<Strategy>>(m, "Strategy")
+        .def("evaluate_board", [](Strategy& self,
+                                   const std::vector<int>& board,
+                                   const std::vector<int>& pre_move_board) {
+            auto b = list_to_board(board);
+            auto pmb = list_to_board(pre_move_board);
+            auto probs = self.evaluate_probs(b, pmb);
+            double eq = NeuralNetwork::compute_equity(probs);
+            py::dict result;
+            result["probs"] = probs;
+            result["equity"] = eq;
+            return result;
+        }, "Evaluate post-move board, returns probs and equity (polymorphic).",
+           py::arg("board"), py::arg("pre_move_board"));
 
     // --- GamePlanStrategy ---
     py::class_<GamePlanStrategy, Strategy, std::shared_ptr<GamePlanStrategy>>(m, "GamePlanStrategy")

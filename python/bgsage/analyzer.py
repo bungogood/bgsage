@@ -887,10 +887,23 @@ class BgBotAnalyzer:
         # Set bearoff DB on inner analyzer and its C++ strategies
         if self._bearoff_db is not None:
             inner._bearoff_db = self._bearoff_db
+            # Wrap the 1-ply strategy in BearoffStrategy so 1-ply scoring used
+            # for filter ranking returns exact DB probs at bearoff positions.
+            # Without this, the 1-ply NN can mis-rank candidates whose post-move
+            # boards are bearoff (e.g. a position the NN says has P(GL)=0.01 but
+            # the DB knows is exactly 0.139), causing the filter to drop near-
+            # equivalent moves before N-ply evaluation.
+            inner._strategy_1ply = bgbot_cpp.BearoffStrategy(
+                inner._strategy_1ply, self._bearoff_db)
             if isinstance(inner, _MultiPlyAnalyzer):
                 bgbot_cpp.multipy_set_bearoff_db(inner._strategy_nply, self._bearoff_db)
             elif isinstance(inner, _RolloutAnalyzer):
                 bgbot_cpp.rollout_set_bearoff_db(inner._rollout_strategy, self._bearoff_db)
+                # The rollout analyzer also keeps an internal 3-ply strategy for
+                # pre-filtering candidates before launching rollouts; that strategy
+                # needs the DB too, otherwise bearoff candidates get NN-noisy
+                # probs in the 3-ply rescore and good moves can be filtered out.
+                bgbot_cpp.multipy_set_bearoff_db(inner._strategy_3ply, self._bearoff_db)
 
         if cubeful:
             self._analyzer = _CubefulAnalyzer(inner)

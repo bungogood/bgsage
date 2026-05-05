@@ -1,4 +1,5 @@
 #include "bgbot/multipy.h"
+#include "bgbot/bearoff.h"
 #include "bgbot/board.h"
 #include "bgbot/moves.h"
 #include "bgbot/encoding.h"
@@ -304,6 +305,31 @@ MultiPlyStrategy::MultiPlyStrategy(std::shared_ptr<Strategy> base_strategy,
 
 // ======================== Cache Management ========================
 
+// ======================== Bearoff DB ========================
+//
+// Setting the bearoff DB wraps base_ (and filter_strat_, when present) in a
+// BearoffStrategy so that any leaf evaluation through these strategies —
+// including the plies==2 fast path which calls
+// base_->batch_evaluate_candidates_best_prob directly and the 1-ply leaf in
+// evaluate_probs_nply_impl — short-circuits to the exact DB lookup whenever
+// the candidate position is in the bearoff range. Without the wrap, the
+// MultiPlyStrategy member bearoff_db_ alone is not sufficient: only
+// evaluate_probs_nply_impl's entry-level check would consult it, and the
+// plies==2 fast path bypasses that entry check on its leaves.
+
+void MultiPlyStrategy::set_bearoff_db(const BearoffDB* db) {
+    bearoff_db_ = db;
+    if (db) {
+        if (!std::dynamic_pointer_cast<BearoffStrategy>(base_)) {
+            base_ = std::make_shared<BearoffStrategy>(base_, db);
+        }
+        if (filter_strat_ &&
+            !std::dynamic_pointer_cast<BearoffStrategy>(filter_strat_)) {
+            filter_strat_ = std::make_shared<BearoffStrategy>(filter_strat_, db);
+        }
+    }
+}
+
 void MultiPlyStrategy::clear_cache() const {
     get_cache().clear();
     // Salt is derived from base strategy pointer — no need to bump.
@@ -385,6 +411,14 @@ std::array<float, NUM_OUTPUTS> MultiPlyStrategy::evaluate_probs_nply_impl(
     const Board& board, const Board& pre_move_board, int plies,
     bool allow_parallel) const
 {
+    // Bearoff DB short-circuit at any depth: positions in the DB get exact
+    // cubeless probs without recursion. Mirrors the BearoffStrategy wrapping
+    // used in the cube_action path, but works whether or not base_ has been
+    // wrapped — the caller only sets the DB on the MultiPlyStrategy itself.
+    if (bearoff_db_ && bearoff_db_->is_bearoff(board)) {
+        return bearoff_db_->lookup_probs(board, /*post_move=*/true);
+    }
+
     // Base case: 1-ply -> delegate to base strategy with proper pre-move context
     if (plies <= 1) {
         return base_->evaluate_probs(board, pre_move_board);

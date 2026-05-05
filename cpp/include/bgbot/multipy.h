@@ -277,8 +277,11 @@ public:
     static SharedPosCache* get_shared_cache();
 
     // Bearoff DB: when set, positions in the DB are evaluated exactly
-    // instead of via NN evaluation / recursion.
-    void set_bearoff_db(const BearoffDB* db) { bearoff_db_ = db; }
+    // instead of via NN evaluation / recursion. Also wraps base_ and
+    // filter_strat_ in BearoffStrategy so leaf evaluations short-circuit
+    // through the DB at any depth (including the plies==2 fast path that
+    // calls base_->batch_evaluate_candidates_best_prob directly).
+    void set_bearoff_db(const BearoffDB* db);
     const BearoffDB* bearoff_db() const { return bearoff_db_; }
 
     // Set a cheap filter strategy (e.g. PubEval) for pre-filtering opponent
