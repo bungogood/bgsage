@@ -461,7 +461,11 @@ std::array<float, NUM_OUTPUTS> RolloutStrategy::best_move_probs_for_candidates(
 {
     if (candidates.empty()) {
         if (best_index) *best_index = -1;
-        return strat.evaluate_probs(board, board);
+        // No legal moves: pass. Probs describe `board` itself (the player
+        // skipped their move), so clamp against `board`.
+        auto probs = strat.evaluate_probs(board, board);
+        clamp_probs_to_board(probs, board);
+        return probs;
     }
 
     if (candidates.size() == 1) {
@@ -470,7 +474,9 @@ std::array<float, NUM_OUTPUTS> RolloutStrategy::best_move_probs_for_candidates(
         if (r != GameResult::NOT_OVER) {
             return terminal_probs(r);
         }
-        return strat.evaluate_probs(candidates[0], board);
+        auto probs = strat.evaluate_probs(candidates[0], board);
+        clamp_probs_to_board(probs, candidates[0]);
+        return probs;
     }
 
     // Fast batch path when using base_ (1-ply) or base_bearoff_ (1-ply
@@ -493,6 +499,9 @@ std::array<float, NUM_OUTPUTS> RolloutStrategy::best_move_probs_for_candidates(
             bearoff_db_->is_bearoff(candidates[idx])) {
             best_probs = bearoff_db_->lookup_probs(candidates[idx],
                                                     /*post_move=*/true);
+        }
+        if (idx >= 0 && idx < static_cast<int>(candidates.size())) {
+            clamp_probs_to_board(best_probs, candidates[idx]);
         }
         if (best_index) *best_index = idx;
         return best_probs;
@@ -544,6 +553,7 @@ std::array<float, NUM_OUTPUTS> RolloutStrategy::best_move_probs_for_candidates(
             eq = static_cast<double>(static_cast<int>(r));
         } else {
             probs = strat.evaluate_probs(candidates[idx], board);
+            clamp_probs_to_board(probs, candidates[idx]);
             eq = compute_equity(probs);
         }
         if (eq > best_eq) {
@@ -633,6 +643,11 @@ void RolloutStrategy::populate_move1_cache_entry(
         const Strategy& mover_strat = base_bearoff_ ? *base_bearoff_ : *base_;
         entry.mover_probs = invert_probs(mover_strat.evaluate_probs(opp_board, opp_board));
     }
+    // mover_probs is the pre-roll cubeless prob from the mover's POV at
+    // move1_board. Clamp against move1_board so impossible outcomes are
+    // exactly zero (matters when the mover already has bearoff progress
+    // or contact has broken).
+    clamp_probs_to_board(entry.mover_probs, move1_board);
     {
         auto [pp, op] = pip_counts(move1_board);
         entry.cube_x = cube_efficiency(entry.mover_probs, entry.race, pp, op);
@@ -670,6 +685,8 @@ void RolloutStrategy::populate_move1_cache_entry(
         if (r != GameResult::NOT_OVER) {
             entry.actual_probs[second_roll] = terminal_probs(r);
         } else if (using_base) {
+            // Already clamped inside best_move_probs_for_candidates against
+            // candidates[best_idx]; reuse directly.
             entry.actual_probs[second_roll] = entry.roll_best_probs[second_roll];
         } else if (best_idx >= 0 &&
                    best_idx < static_cast<int>(candidates.size()) &&
@@ -677,6 +694,7 @@ void RolloutStrategy::populate_move1_cache_entry(
             entry.actual_probs[second_roll] = entry.roll_best_probs[second_roll];
         } else {
             entry.actual_probs[second_roll] = current_strat.evaluate_probs(chosen, move1_board);
+            clamp_probs_to_board(entry.actual_probs[second_roll], chosen);
         }
     }
 
@@ -857,6 +875,9 @@ RolloutStrategy::TrialResult RolloutStrategy::run_trial_unified(
                     cube_x = cube_efficiency(mover_probs, race, pp, op);
                     cube_x_ready = true;
                 }
+                // mover_probs are pre-roll probs from the current mover's POV
+                // at `board`. Clamp before applying Janowski.
+                clamp_probs_to_board(mover_probs, board);
 
                 for (int b = 0; b < n_branches; ++b) {
                     if (branches[b].finished) continue;
@@ -1035,6 +1056,9 @@ RolloutStrategy::TrialResult RolloutStrategy::run_trial_unified(
                     base_bearoff_ ? *base_bearoff_ : *base_;
                 auto opp_probs_early = early_strat.evaluate_probs(opp_board_early, opp_board_early);
                 auto early_probs = invert_probs(opp_probs_early);
+                // early_probs are pre-roll probs from the current mover's POV
+                // at `board`. Clamp against board before perspective conversion.
+                clamp_probs_to_board(early_probs, board);
                 std::array<float, NUM_OUTPUTS> sp_probs;
                 if (is_sp_turn) {
                     sp_probs = early_probs;
@@ -1249,7 +1273,8 @@ RolloutStrategy::TrialResult RolloutStrategy::run_trial_unified(
             if (move1_entry) {
                 actual_probs = move1_entry->actual_probs[actual_idx];
             } else if (using_base) {
-                // Decision also used 1-ply — reuse VR's stored probs
+                // Decision also used 1-ply — reuse VR's stored probs (already
+                // clamped inside best_move_probs_for_candidates).
                 actual_probs = roll_best_probs[actual_idx];
             } else {
                 // Decision used N-ply — evaluate chosen at 1-ply for VR.
@@ -1262,6 +1287,10 @@ RolloutStrategy::TrialResult RolloutStrategy::run_trial_unified(
                     const Strategy& vr_base =
                         base_bearoff_ ? *base_bearoff_ : *base_;
                     actual_probs = vr_base.evaluate_probs(chosen, board);
+                    // Clamp against `chosen` (the post-move board these
+                    // probs describe) so VR actual matches the clamped VR
+                    // mean from best_move_probs_for_candidates.
+                    clamp_probs_to_board(actual_probs, chosen);
                 }
             }
 
@@ -1390,6 +1419,14 @@ RolloutStrategy::TrialResult RolloutStrategy::run_trial_unified(
     const auto& trunc_strat = *truncation_strat_;
 
     auto last_mover_probs = trunc_strat.evaluate_probs(last_mover_board, last_mover_board);
+    // Sanity-clamp the truncation probabilities against `last_mover_board`
+    // so impossible outcomes (gammon/backgammon when the player has borne
+    // off, backgammon when contact has been broken and no checker is in
+    // the danger zone) are exactly zero. This is the canonical "amend the
+    // cubeless probabilities at the truncation point" behavior — the
+    // resulting probs feed both the cubeless VR-corrected return and the
+    // 1-ply Janowski branch of the cubeful truncation path.
+    clamp_probs_to_board(last_mover_probs, last_mover_board);
     ROLLOUT_TIMER_ADD(trunc_time_ns);
 #ifdef ROLLOUT_PROFILE
     rollout_profile::trial_count.fetch_add(1, std::memory_order_relaxed);

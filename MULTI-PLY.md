@@ -53,6 +53,33 @@ perspective of the player who just moved (post-move, pre-opponent-roll):
 | P(gl) | Probability of losing a gammon (includes backgammons) |
 | P(bl) | Probability of losing a backgammon |
 
+### Position-Based Probability Clamping
+
+The neural network is approximate, so it can emit small non-zero probabilities
+for outcomes that the position itself rules out. Every cubeless probability
+produced inside the multi-ply evaluator (NN leaf, bearoff DB lookup, averaged
+recursion result, the 21-roll opponent best-prob batch on the 2-ply fast path)
+is run through `clamp_probs_to_board(probs, board)` before being returned or
+consumed by Janowski. The clamp enforces:
+
+| Invariant | When it fires | Effect |
+|-----------|---------------|--------|
+| Player has at least 1 checker borne off | `player_borne_off(board) > 0` | `P(gl) = P(bl) = 0` |
+| Opponent has at least 1 checker borne off | `opponent_borne_off(board) > 0` | `P(gw) = P(bw) = 0` |
+| Contact broken AND player has nothing on points 19-24 or bar (25) | `is_race(board)` AND `sum(c for c in board[19:26] if c > 0) == 0` | `P(bl) = 0` |
+| Contact broken AND opponent has nothing on points 1-6 or bar (0) | `is_race(board)` AND `sum(-c for c in board[1:7] if c < 0) + board[0] == 0` | `P(bw) = 0` |
+
+The contact-broken precondition for invariants 3 and 4 ensures the "no checker
+in the danger zone" status is stable: under contact a checker can be hit and
+sent to the bar (re-entering in the opponent's home), so the property could be
+re-violated; once contact breaks, no re-entry is possible.
+
+The clamp is applied at every prob-production point in `evaluate_probs_nply_impl`
+(both leaf paths and the final averaged result) and inside the cubeful recursion
+at every NN leaf. Janowski input is therefore always clamp-consistent — a
+position with a borne-off checker has gammon-loss equity components that are
+exactly zero, not "approximately zero."
+
 ### Cubeless Equity
 
 Cubeless equity assumes no further cube action is possible:
@@ -282,6 +309,7 @@ function cubeful_recursive_multi(board, cubeStates, cci, plies, fTop):
     // 3. LEAF NODE (plies ≤ 1): NN evaluation + Janowski
     if plies ≤ 1:
         probs = invert(strategy.evaluate(flip(board)))    // pre-roll probs
+        clamp_probs_to_board(probs, board)                // position invariants
         x = cube_efficiency(board)
 
         expanded[] = make_cube_pos(cubeStates, cci, fTop, fInvert=false)
@@ -521,21 +549,29 @@ Evaluates a post-move position at N-ply depth, returning 5 cubeless probabilitie
 ```
 function evaluate_probs_nply_impl(board, pre_move_board, plies, allow_parallel):
 
-    // 1. Base case
-    if plies ≤ 1:
-        return base_strategy.evaluate_probs(board, pre_move_board)
+    // 1. Bearoff DB short-circuit (any depth)
+    if bearoff_db and is_bearoff(board):
+        probs = bearoff_db.lookup(board)
+        clamp_probs_to_board(probs, board)
+        return probs
 
-    // 2. Terminal check
+    // 2. Base case
+    if plies ≤ 1:
+        probs = base_strategy.evaluate_probs(board, pre_move_board)
+        clamp_probs_to_board(probs, board)
+        return probs
+
+    // 3. Terminal check
     if game_over(board):
         return terminal_probs(result)
 
-    // 3. Cache lookup (thread-local)
+    // 4. Cache lookup (thread-local)
     key = cache_key_for(board, plies)
     if cache_enabled:
         cached = thread_local_cache.lookup(key)
         if cached: return cached
 
-    // 4. Shared cache lookup (active during parallel rollouts)
+    // 5. Shared cache lookup (active during parallel rollouts)
     shared_reservation = null
     if cache_enabled and shared_cache_active:
         result = shared_cache.lookup_or_reserve(key)
@@ -544,19 +580,20 @@ function evaluate_probs_nply_impl(board, pre_move_board, plies, allow_parallel):
             return result.probs
         shared_reservation = result.reservation
 
-    // 5. Flip to opponent's perspective
+    // 6. Flip to opponent's perspective
     opp_board = flip(board)
 
-    // 6. Iterate over 21 dice rolls
+    // 7. Iterate over 21 dice rolls
     accum[5] = {0}
     for each of 21 dice rolls (d1, d2, weight):
         p1_probs = evaluate_single_roll(opp_board, d1, d2, plies)
         accum += weight * p1_probs
 
-    // 7. Average
+    // 8. Average and clamp
     avg = accum / 36.0
+    clamp_probs_to_board(avg, board)   // enforce position invariants
 
-    // 8. Store in caches
+    // 9. Store in caches
     if cache_enabled:
         thread_local_cache.insert(key, avg)
     if cache_enabled and shared_cache_active:
@@ -567,6 +604,11 @@ function evaluate_probs_nply_impl(board, pre_move_board, plies, allow_parallel):
 
     return avg
 ```
+
+The averaged result is clamped against `board` even though each summand is
+already clamped — float accumulation can leak tiny non-zero values into
+impossible-outcome slots, so the final clamp guarantees the returned probs
+satisfy the board-state invariants exactly.
 
 ### Opponent Move Selection (Per Roll)
 

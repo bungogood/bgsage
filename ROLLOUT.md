@@ -470,13 +470,17 @@ If the trial reaches `truncation_depth` without terminating:
 1. Evaluate the last mover's post-move position using the truncation strategy
    (a separate `MultiPlyStrategy` instance with aggressive PubEval prefiltering;
    see §11 for details).
-2. For cubeful branches with N-ply truncation (`truncation_ply > 1`): make a
+2. Clamp the truncation probabilities against `last_mover_board` so impossible
+   outcomes (gammon/backgammon when bearoff has begun, backgammon when contact
+   is broken and the danger zone is empty) are exactly zero.
+3. For cubeful branches with N-ply truncation (`truncation_ply > 1`): make a
    single `cubeful_equity_nply_multi` call over all unfinished branches with
    a tight single-candidate move filter `{1, 0.0}` so the cubeful tree and
-   its move selection are shared across branches (see §11).
-3. For cubeful branches with 1-ply truncation: apply Janowski to the cubeless
-   probs.
-4. Convert to SP perspective, VR-correct, and return.
+   its move selection are shared across branches (see §11). The clamp is
+   applied inside the cubeful recursion at every NN leaf (see `MULTI-PLY.md`).
+4. For cubeful branches with 1-ply truncation: apply Janowski to the clamped
+   cubeless probs.
+5. Convert to SP perspective, VR-correct, and return.
 
 ## 6. Position Rollouts (Cubeless and Cubeful)
 
@@ -800,6 +804,30 @@ eliminates idle time from uneven prefill work distribution.
 
 When a trial reaches `truncation_depth` half-moves without terminating, the game
 is cut short and the position is evaluated with a neural network.
+
+### Position-Based Probability Clamping
+
+The cubeless probabilities returned by the truncation NN are run through
+`clamp_probs_to_board(probs, last_mover_board)` before being used as either
+the per-trial cubeless return value or the input to the 1-ply Janowski path
+of cubeful truncation. The same clamp is applied at every other prob
+production point in the trial: the VR mean (best-move probs over the 21
+rolls), the VR actual (chosen-move probs), the cube-decision pre-roll probs,
+the early-termination cubeless probs when all branches D/P, and the
+move0/move1 cache prefill. The clamp enforces the same four position
+invariants documented in `MULTI-PLY.md` §2 (player or opponent already has
+bearoff progress; contact broken with the player or opponent absent from
+the danger zone). Cubeful N-ply truncation goes through
+`cubeful_equity_nply_multi` → `cubeful_recursive_multi`, where the leaf NN
+output is clamped inside the multi-ply evaluator itself.
+
+The result: at every truncation point and at every NN-driven step inside a
+trial, gammon and backgammon outcomes that the position rules out are
+exactly zero in the per-trial probability vector. For a position with
+deterministic backgammon-loss probability (e.g. a pure race where the
+player has cleared the opponent's home board), the per-trial backgammon
+probabilities are deterministically zero too — so VR-corrected per-trial
+probs are exact rather than "approximately exact."
 
 ### Truncation Strategy (Separate Instance)
 

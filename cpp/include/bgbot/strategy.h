@@ -3,6 +3,7 @@
 #pragma once
 
 #include "types.h"
+#include "board.h"
 #include <array>
 #include <vector>
 
@@ -45,6 +46,66 @@ inline std::array<float, NUM_OUTPUTS> invert_probs(
         p[1],           // P(gl)  = P(opp_gw)
         p[2]            // P(bl)  = P(opp_bw)
     };
+}
+
+// Clamp cubeless probabilities to enforce sanity invariants implied by the
+// board state. `probs` are from the perspective of the player whose checkers
+// are positive on `board` (the standard "current player" / mover convention).
+//
+// Invariants enforced (NN may emit small non-zero values for impossible
+// outcomes; this zeros them out exactly):
+//
+//   1. If the player has at least one checker borne off, gammon and
+//      backgammon LOSS are impossible -> P(gl)=0, P(bl)=0.
+//   2. If the opponent has at least one checker borne off, gammon and
+//      backgammon WIN are impossible -> P(gw)=0, P(bw)=0.
+//   3. If contact is broken AND the player has no checkers in the
+//      opponent's home board (points 19-24) or on the bar (index 25),
+//      P(bl)=0 (the player cannot be backgammoned).
+//   4. If contact is broken AND the opponent has no checkers in the
+//      player's home board (points 1-6) or on the bar (index 0),
+//      P(bw)=0 (the player cannot win a backgammon).
+//
+// The contact-broken precondition (rules 3/4) ensures the "no checker in
+// the danger zone" status is stable: under contact, a checker can be hit
+// and sent to the bar (re-entering in opponent's home), so the property
+// could be re-violated; once contact is broken, no re-entry is possible.
+//
+// This is a pure post-hoc clamp on cubeless probabilities — it does not
+// adjust P(win) or P(gw)/P(gl). Equity remains a linear function of the
+// (possibly clamped) probs.
+inline void clamp_probs_to_board(
+    std::array<float, NUM_OUTPUTS>& probs, const Board& board)
+{
+    // Invariant 1: player has borne off at least one checker.
+    if (player_borne_off(board) > 0) {
+        probs[3] = 0.0f;  // P(gl)
+        probs[4] = 0.0f;  // P(bl)
+    }
+    // Invariant 2: opponent has borne off at least one checker.
+    if (opponent_borne_off(board) > 0) {
+        probs[1] = 0.0f;  // P(gw)
+        probs[2] = 0.0f;  // P(bw)
+    }
+    // Invariants 3 and 4 require contact to be broken.
+    if ((probs[4] != 0.0f || probs[2] != 0.0f) && is_race(board)) {
+        if (probs[4] != 0.0f) {
+            // Player checkers in opponent's home (19-24) or on bar (25)?
+            int p_in_danger = board[25];
+            for (int i = 19; i <= 24; ++i) {
+                if (board[i] > 0) p_in_danger += board[i];
+            }
+            if (p_in_danger == 0) probs[4] = 0.0f;
+        }
+        if (probs[2] != 0.0f) {
+            // Opponent checkers in player's home (1-6) or on bar (0)?
+            int o_in_danger = board[0];
+            for (int i = 1; i <= 6; ++i) {
+                if (board[i] < 0) o_in_danger -= board[i];
+            }
+            if (o_in_danger == 0) probs[2] = 0.0f;
+        }
+    }
 }
 
 // Abstract strategy interface.

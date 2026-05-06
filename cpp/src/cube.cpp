@@ -1006,6 +1006,11 @@ static float eval_pre_roll_cubeful_1ply(
 
     auto post_probs = strategy.evaluate_probs(flipped, race);
     auto pre_roll_probs = invert_probs(post_probs);
+    // Sanity-clamp pre-roll probs against `board` (mover's perspective)
+    // before Janowski conversion: zeros out gammon/backgammon outcomes that
+    // the position rules out (player has bearoff progress, contact broken,
+    // etc.).
+    clamp_probs_to_board(pre_roll_probs, board);
     float x = resolve_cube_x(pre_roll_probs, cube, board, race);
 
     if (cube.is_money()) {
@@ -1177,6 +1182,10 @@ static void cubeful_recursive_multi(
         bool race = is_race(board);
         auto post_probs = strategy.evaluate_probs(flipped, race);
         auto pre_roll_probs = invert_probs(post_probs);
+        // Clamp the pre-roll cubeless probs against the leaf board (mover's
+        // perspective) so gammon/backgammon outcomes ruled out by the
+        // position itself are exactly zero in the Janowski input.
+        clamp_probs_to_board(pre_roll_probs, board);
         float default_x = resolve_cube_x(
             pre_roll_probs,
             (cci > 0 && aciCubePos[0].cube_value > 0) ? aciCubePos[0] : CubeInfo{},
@@ -1606,6 +1615,8 @@ void cube_decision_nply_multi(
         bool race = is_race(board);
         auto post_probs = strategy.evaluate_probs(flipped, race);
         auto pre_roll_probs = invert_probs(post_probs);
+        // Clamp once (shared across all cube states).
+        clamp_probs_to_board(pre_roll_probs, board);
         for (int i = 0; i < n_cubes; ++i) {
             float x = resolve_cube_x(pre_roll_probs, cubes[i], board, race);
             out[i] = cube_decision_1ply(pre_roll_probs, cubes[i], x);
@@ -2359,6 +2370,7 @@ CubeDecision cube_decision_nply(
         bool race = is_race(board);
         auto post_probs = strategy.evaluate_probs(flipped, race);
         auto pre_roll_probs = invert_probs(post_probs);
+        clamp_probs_to_board(pre_roll_probs, board);
         float x = resolve_cube_x(pre_roll_probs, cube, board, race);
         return cube_decision_1ply(pre_roll_probs, cube, x);
     }

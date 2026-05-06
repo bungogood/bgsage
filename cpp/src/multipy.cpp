@@ -418,12 +418,16 @@ std::array<float, NUM_OUTPUTS> MultiPlyStrategy::evaluate_probs_nply_impl(
     // used in the cube_action path, but works whether or not base_ has been
     // wrapped — the caller only sets the DB on the MultiPlyStrategy itself.
     if (bearoff_db_ && bearoff_db_->is_bearoff(board)) {
-        return bearoff_db_->lookup_probs(board, /*post_move=*/true);
+        auto probs = bearoff_db_->lookup_probs(board, /*post_move=*/true);
+        clamp_probs_to_board(probs, board);
+        return probs;
     }
 
     // Base case: 1-ply -> delegate to base strategy with proper pre-move context
     if (plies <= 1) {
-        return base_->evaluate_probs(board, pre_move_board);
+        auto probs = base_->evaluate_probs(board, pre_move_board);
+        clamp_probs_to_board(probs, board);
+        return probs;
     }
 
     // Terminal position check
@@ -595,6 +599,11 @@ std::array<float, NUM_OUTPUTS> MultiPlyStrategy::evaluate_probs_nply_impl(
                 // At plies==2, evaluate_probs_nply(best, board, 1) would just
                 // return base_->evaluate_probs(best, board). We already have those
                 // probs from the batch evaluation. Use them directly.
+                // Clamp against the opponent's chosen post-move board so the
+                // sanity invariants are enforced before inversion.
+                if (best_opp_idx >= 0 && best_opp_idx < static_cast<int>(opp_candidates.size())) {
+                    clamp_probs_to_board(best_probs, opp_candidates[best_opp_idx]);
+                }
                 p1_probs = invert_probs(best_probs);
             } else {
                 // Batch evaluation with filter strategy (or base_ if no filter)
@@ -646,6 +655,13 @@ std::array<float, NUM_OUTPUTS> MultiPlyStrategy::evaluate_probs_nply_impl(
     for (int k = 0; k < NUM_OUTPUTS; ++k) {
         avg[k] = static_cast<float>(sum_probs[k] / 36.0);
     }
+
+    // Sanity-clamp the averaged result against `board`. Each summand is
+    // already clamped (recursive calls clamp their returns, and the leaf
+    // path clamps too), but float accumulation can leak tiny non-zero
+    // values into impossible-outcome slots. This guarantees the returned
+    // probs satisfy the board-state invariants exactly.
+    clamp_probs_to_board(avg, board);
 
     // Store in cache (auto-clears at 75% load)
     if (cache_enabled_) {
