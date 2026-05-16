@@ -99,6 +99,60 @@ def _find_move_steps(
     return None
 
 
+def _legal_targets_strict(board: list[int], die1: int, die2: int) -> list[list[int]]:
+    """Generate legal final boards with strict dice-usage rules.
+
+    Enforces standard backgammon priority:
+    - Use both dice if possible.
+    - If only one die can be played, use the larger die.
+    """
+
+    if die1 == die2:
+        states = {tuple(board)}
+        for _ in range(4):
+            next_states: set[tuple[int, ...]] = set()
+            for state in states:
+                moves = possible_single_die_moves(list(state), die1)
+                if moves:
+                    for mv in moves:
+                        next_states.add(tuple(mv["board"]))
+                else:
+                    next_states.add(state)
+            states = next_states
+        return [list(s) for s in states]
+
+    def advance_once(
+        states: set[tuple[int, ...]], die: int
+    ) -> tuple[set[tuple[int, ...]], bool]:
+        out: set[tuple[int, ...]] = set()
+        used = False
+        for state in states:
+            moves = possible_single_die_moves(list(state), die)
+            if moves:
+                used = True
+                for mv in moves:
+                    out.add(tuple(mv["board"]))
+            else:
+                out.add(state)
+        return out, used
+
+    start = {tuple(board)}
+    states_12, used_1 = advance_once(start, die1)
+    states_12, used_2_after_1 = advance_once(states_12, die2)
+
+    states_21, used_2 = advance_once(start, die2)
+    states_21, used_1_after_2 = advance_once(states_21, die1)
+
+    can_use_both = (used_1 and used_2_after_1) or (used_2 and used_1_after_2)
+    if can_use_both:
+        merged = states_12 | states_21
+        return [list(s) for s in merged]
+
+    if die1 > die2:
+        return [list(s) for s in states_12] if used_1 else [list(s) for s in states_21]
+    return [list(s) for s in states_21] if used_2 else [list(s) for s in states_12]
+
+
 def _move_steps_to_text(before: list[int], steps: list[dict]) -> str:
     parts: list[str] = []
     cur = before
@@ -210,10 +264,20 @@ def main() -> int:
             try:
                 d1, d2 = state.dice
                 result = analyzer.checker_play(state.board, d1, d2)
-                if not result.moves:
+                legal_targets = _legal_targets_strict(state.board, d1, d2)
+                legal_set = {tuple(b) for b in legal_targets}
+
+                if not legal_set:
                     _reply("bestmove pass")
                     continue
-                best = result.moves[0].board
+
+                best = None
+                for cand in result.moves:
+                    if tuple(cand.board) in legal_set:
+                        best = cand.board
+                        break
+                if best is None:
+                    best = legal_targets[0]
 
                 steps = _find_move_steps(state.board, best, d1, d2)
                 if steps is None:
