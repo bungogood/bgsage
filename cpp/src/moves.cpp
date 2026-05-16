@@ -135,12 +135,6 @@ void generate_boards_strict(const Board& b, const int* dice, int n_dice,
                             std::vector<Board>& results,
                             std::vector<Board>* scratch_by_depth,
                             int depth = 0) {
-    // All checkers borne off mid-sequence — game over, remaining dice irrelevant
-    if (!has_checkers(b)) {
-        results.push_back(b);
-        return;
-    }
-
     std::vector<Board>& scratch = scratch_by_depth[depth];
     scratch.clear();
     possible_boards_one_die(b, dice[0], scratch);

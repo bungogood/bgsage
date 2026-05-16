@@ -4,10 +4,11 @@
 
 Implements the minimal command set expected by bgci:
 - ubgi / isready / newgame / quit
-- setoption name Variant value <variant>
+- set game.variant <variant>
+- set engine.ply <n>
 - position gnubgid <id>
 - dice <d1> <d2>
-- go role chequer (and go)
+- go chequer (and go)
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ for p in (_PYTHON_DIR, _BUILD_DIR, _BUILD_MSVC_DIR):
         sys.path.insert(0, p)
 
 from bgsage import BgBotAnalyzer
-from bgsage.board import possible_single_die_moves
+from bgsage.board import possible_moves, possible_single_die_moves
 from bgsage.data import board_from_gnubg_position_string
 
 
@@ -37,11 +38,13 @@ def _reply(line: str) -> None:
     print(line, flush=True)
 
 
-def _parse_variant_setoption(cmd: str) -> str | None:
-    prefix = "setoption name Variant value "
-    if not cmd.startswith(prefix):
+def _parse_set_kv(cmd: str) -> tuple[str, str] | None:
+    if not cmd.startswith("set "):
         return None
-    return cmd[len(prefix) :].strip().lower()
+    parts = cmd.split(maxsplit=2)
+    if len(parts) != 3:
+        return ("", "")
+    return (parts[1].strip(), parts[2].strip())
 
 
 _KNOWN_VARIANTS = {
@@ -99,60 +102,6 @@ def _find_move_steps(
     return None
 
 
-def _legal_targets_strict(board: list[int], die1: int, die2: int) -> list[list[int]]:
-    """Generate legal final boards with strict dice-usage rules.
-
-    Enforces standard backgammon priority:
-    - Use both dice if possible.
-    - If only one die can be played, use the larger die.
-    """
-
-    if die1 == die2:
-        states = {tuple(board)}
-        for _ in range(4):
-            next_states: set[tuple[int, ...]] = set()
-            for state in states:
-                moves = possible_single_die_moves(list(state), die1)
-                if moves:
-                    for mv in moves:
-                        next_states.add(tuple(mv["board"]))
-                else:
-                    next_states.add(state)
-            states = next_states
-        return [list(s) for s in states]
-
-    def advance_once(
-        states: set[tuple[int, ...]], die: int
-    ) -> tuple[set[tuple[int, ...]], bool]:
-        out: set[tuple[int, ...]] = set()
-        used = False
-        for state in states:
-            moves = possible_single_die_moves(list(state), die)
-            if moves:
-                used = True
-                for mv in moves:
-                    out.add(tuple(mv["board"]))
-            else:
-                out.add(state)
-        return out, used
-
-    start = {tuple(board)}
-    states_12, used_1 = advance_once(start, die1)
-    states_12, used_2_after_1 = advance_once(states_12, die2)
-
-    states_21, used_2 = advance_once(start, die2)
-    states_21, used_1_after_2 = advance_once(states_21, die1)
-
-    can_use_both = (used_1 and used_2_after_1) or (used_2 and used_1_after_2)
-    if can_use_both:
-        merged = states_12 | states_21
-        return [list(s) for s in merged]
-
-    if die1 > die2:
-        return [list(s) for s in states_12] if used_1 else [list(s) for s in states_21]
-    return [list(s) for s in states_21] if used_2 else [list(s) for s in states_12]
-
-
 def _move_steps_to_text(before: list[int], steps: list[dict]) -> str:
     parts: list[str] = []
     cur = before
@@ -189,6 +138,7 @@ def main() -> int:
     args = parser.parse_args()
 
     analyzer = BgBotAnalyzer(eval_level=args.level, cubeful=args.cubeful)
+    max_ply = 4
     state = EngineState()
 
     for raw in sys.stdin:
@@ -199,11 +149,29 @@ def main() -> int:
         if cmd == "ubgi":
             _reply("id name bgsage")
             _reply("id author bgsage")
-            _reply("id version 0.1")
+            _reply("proto 0.2")
             _reply(
-                "option name Variant type combo default backgammon var backgammon var nackgammon var longgammon var hypergammon var hypergammon2 var hypergammon4 var hypergammon5"
+                "key game.variant enum backgammon|nackgammon|longgammon|hypergammon|hypergammon2|hypergammon4|hypergammon5 backgammon"
             )
+            _reply(f"key engine.ply int 1..{max_ply} 2")
             _reply("ubgiok")
+            continue
+
+        if cmd == "keys":
+            _reply(
+                "key game.variant enum backgammon|nackgammon|longgammon|hypergammon|hypergammon2|hypergammon4|hypergammon5 backgammon"
+            )
+            _reply(f"key engine.ply int 1..{max_ply} 2")
+            continue
+
+        if cmd.startswith("get "):
+            key = cmd[4:].strip()
+            if key == "game.variant":
+                _reply("value game.variant backgammon")
+            elif key == "engine.ply":
+                _reply("value engine.ply 2")
+            else:
+                _reply("error unsupported key")
             continue
 
         if cmd == "isready":
@@ -215,56 +183,77 @@ def main() -> int:
             state.dice = None
             continue
 
-        variant = _parse_variant_setoption(cmd)
-        if variant is not None:
-            if variant not in _KNOWN_VARIANTS:
-                _reply("error bad_argument variant")
+        kv = _parse_set_kv(cmd)
+        if kv is not None:
+            key, value = kv
+            if key == "":
+                _reply("error bad_command set")
                 continue
-            state.board = None
-            state.dice = None
+            if key == "game.variant":
+                variant = value.lower()
+                if variant not in _KNOWN_VARIANTS:
+                    _reply("error bad_value game.variant")
+                    continue
+                state.board = None
+                state.dice = None
+                continue
+            if key == "engine.ply":
+                try:
+                    ply = int(value)
+                except ValueError:
+                    _reply("error bad_value engine.ply")
+                    continue
+                if ply < 1 or ply > max_ply:
+                    _reply("error bad_value engine.ply")
+                    continue
+                analyzer = BgBotAnalyzer(eval_level=f"{ply}ply", cubeful=args.cubeful)
+                state.board = None
+                state.dice = None
+                continue
+            _reply("error unsupported key")
             continue
 
         if cmd.startswith("position gnubgid "):
             pos_id = cmd[len("position gnubgid ") :].strip()
             board = _decode_gnubgid(pos_id)
             if board is None:
-                _reply("error bad_argument invalid_position")
+                _reply("error bad_value position")
             else:
                 state.board = board
             continue
 
         if cmd == "position xgid" or cmd.startswith("position xgid "):
-            _reply("error unsupported_feature position_xgid")
+            _reply("error unsupported position.xgid")
             continue
 
         if cmd.startswith("dice "):
             bits = cmd.split()
             if len(bits) != 3:
-                _reply("error bad_argument dice")
+                _reply("error bad_value dice")
                 continue
             try:
                 d1 = int(bits[1])
                 d2 = int(bits[2])
             except ValueError:
-                _reply("error bad_argument dice")
+                _reply("error bad_value dice")
                 continue
             if not (1 <= d1 <= 6 and 1 <= d2 <= 6):
-                _reply("error bad_argument dice")
+                _reply("error bad_value dice")
                 continue
             state.dice = (d1, d2)
             continue
 
-        if cmd == "go" or cmd == "go role chequer":
+        if cmd == "go" or cmd == "go chequer":
             if state.board is None:
-                _reply("error missing_context position")
+                _reply("error bad_state missing.position")
                 continue
             if state.dice is None:
-                _reply("error missing_context dice")
+                _reply("error bad_state missing.dice")
                 continue
             try:
                 d1, d2 = state.dice
                 result = analyzer.checker_play(state.board, d1, d2)
-                legal_targets = _legal_targets_strict(state.board, d1, d2)
+                legal_targets = [list(b) for b in possible_moves(state.board, d1, d2)]
                 legal_set = {tuple(b) for b in legal_targets}
 
                 if not legal_set:
@@ -281,20 +270,20 @@ def main() -> int:
 
                 steps = _find_move_steps(state.board, best, d1, d2)
                 if steps is None:
-                    _reply("error internal move_select_failed cannot_reconstruct_move")
+                    _reply("error bad_state move.reconstruct")
                     continue
                 mv = _move_steps_to_text(state.board, steps)
                 if not mv:
                     mv = "pass"
                 _reply(f"bestmove {mv}")
             except Exception as exc:
-                _reply(f"error internal move_select_failed {exc}")
+                _reply(f"error bad_state move.select {exc}")
             continue
 
         if cmd == "quit":
             return 0
 
-        _reply("error unknown_command")
+        _reply("error bad_command unknown")
 
     return 0
 
