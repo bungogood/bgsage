@@ -44,3 +44,13 @@ The most direct way to compare the Open Sage bot engine against XG's would be to
 Another slightly more indirect way is to have XG analyze Open Sage's play. The approach: run many separate money games where the Open Sage bot plays itself; for each game, write out the list of plays to a file that XG can import; when those files are written, use XG's Batch Analyze function to analyze them (at World Class level, which corresponds roughly to XG Roller + evaluation strength) and write out per-game XG files next to the text files; then pull the XG analytics out of those files to see how XG scores Open Sage's decisions. CLAUDE.md has details on which scripts to use for this.
 
 The result: Open Sage, using 3-ply evaluation strength, scored a PR of 0.39 across 200 money games. That is very close to identical play. In addition, when examining individual positions where Open Sage and XG are different, it is unclear whether Open Sage or XG is actually correct - there are examples of both - which suggests that Open Sage and XG are performing comparably on this aggregate basis.
+
+## UBGI Engine Mode (for bgci)
+
+If you want to benchmark bgsage against other engines through `bgci`, run the UBGI adapter script:
+
+```bash
+python3 scripts/ubgi_engine.py --level 2ply
+```
+
+It implements the standard UBGI handshake and move-selection flow (`ubgi`, `isready`, `newgame`, `position gnubgid`, `dice`, `go role chequer`, `quit`) and returns moves in standard notation via `bestmove ...`.
